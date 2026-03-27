@@ -15,10 +15,14 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Mac DMG to release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-windows:
     runs-on: windows-latest
@@ -29,7 +33,11 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Windows EXE to release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
