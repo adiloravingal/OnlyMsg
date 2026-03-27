@@ -1,5 +1,5 @@
 ## OnlyMsg
-### Supports major all major Socials and other messaging platforms
+*Supports major all major socials and other messaging platforms*
 
 ### Why I made this? 
 I made it because I wanted to message on socials without falling to the "Feed" and aggregate other messaging platforms that can be useful for a university student including Microsoft Teams and Google Classroom.
@@ -11,10 +11,8 @@ I hope this helps out everyone who want to quit social media but still wanna mes
 Mess around and find out :P - basic feature is that all messages in one place + no doomscrolling
 
 ### Downloads
-> For Apple silicon (M1, M2, ...) download arm64-dmg file: https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0-arm64.dmg
-
-> For Apple Intel download .dmg file: https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0.dmg
-
+> For Apple silicon (M1, M2, ...) download arm64-dmg file: https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0-arm64.dmg  
+> For Apple Intel download .dmg file: https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0.dmg  
 > For Windows download .exe file: https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg.Setup.1.0.0.exe
 
 ### Support
