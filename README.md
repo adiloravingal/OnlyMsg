@@ -11,13 +11,12 @@ I hope this helps out everyone who want to quit social media but still wanna mes
 Mess around and find out :P - basic feature is that all messages in one place + no doomscrolling
 
 ### Downloads
-> For Apple silicon (M1, M2, ...) download arm64-dmg file:  https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0-arm64.dmg
+*Apple*
+> For Apple silicon (M1, M2, ...) download arm64-dmg file:  https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0-arm64.dmg  
+> For Apple Intel download .dmg file:  
+https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0.dmg  
 
-
-> For Apple Intel download .dmg file:
-https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0.dmg
-
-
+*Windows*
 > For Windows download .exe file:  
 https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg.Setup.1.0.0.exe
 
