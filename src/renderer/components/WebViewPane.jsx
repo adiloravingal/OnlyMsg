@@ -25,28 +25,39 @@ function isReelUrl(url) {
 
 const INJECT_CSS = {
   instagram: `
-    /* Hide bottom nav items except DMs */
-    nav[role="navigation"] a[href="/"],
-    nav[role="navigation"] a[href*="/explore"],
-    nav[role="navigation"] a[href*="/reels"],
-    a[href="/"] svg[aria-label="Home"],
-    a[href*="/explore"] svg,
-    a[href*="/reels"] svg { display: none !important; }
+    /* ── Left nav: hide everything except the Messages (DM) link ── */
+    /* Hide Home */
+    a[href="/"] { display: none !important; }
+    /* Hide Explore */
+    a[href*="/explore"] { display: none !important; }
+    /* Hide Reels */
+    a[href*="/reels"] { display: none !important; }
+    /* Hide Threads */
+    a[href*="threads.net"] { display: none !important; }
 
-    /* Hide main feed, stories, suggested posts */
-    main > div > div:first-child > div[style*="overflow"],
-    div[data-pagelet="FeedStories"],
-    section > div > div > div > ul,
-    article[data-media-type="GraphSuggestedUserFeedUnit"] { display: none !important; }
+    /* Hide nav items by aria-label (stable across redesigns) */
+    [aria-label="Home"],
+    [aria-label="Explore"],
+    [aria-label="Reels"],
+    [aria-label="Marketplace"],
+    [aria-label="Facebook"] { display: none !important; }
 
-    /* In reel view: hide Instagram's next-reel nav and suggested carousel */
-    div[class*="ReelsRootContainerNextButton"],
-    div[class*="_ac7v"][style*="snap"] ~ div { display: none !important; }
+    /* Hide the main home feed article list */
+    main[role="main"] > div > div > div > div > article,
+    main[role="main"] > div > div > div > div > div > article { display: none !important; }
 
-    /* Hide explore page */
+    /* Hide suggested posts / feed section outside DMs */
+    [data-pagelet="FeedStories"],
+    [data-pagelet="Feed"] { display: none !important; }
+
+    /* In reel view: hide next-reel overlays and suggested carousel */
+    [aria-label="Next reel"],
+    [aria-label="Previous reel"] { display: none !important; }
+
+    /* Hide explore grid */
     main[role="main"] header ~ section { display: none !important; }
 
-    /* Queue mode: hide Instagram's native reel action buttons so our overlay is the only UI */
+    /* Queue mode: hide Instagram's own reel action bar */
     body.om-queue-mode [aria-label="Next"],
     body.om-queue-mode [aria-label="Previous"],
     body.om-queue-mode div[class*="ReelActions"],
@@ -92,24 +103,40 @@ const INJECT_CSS = {
 const INJECT_JS = {
   instagram: `
 (function() {
-  const DM_PATH = '/direct/inbox/';
+  const DM = '/direct/inbox/';
+  const BLOCKED = ['/', '/explore', '/reels', '/reels/'];
 
-  function maybeRedirect() {
+  function redirect() {
     const p = location.pathname;
-    if (p === '/' || p.startsWith('/explore') || p === '/reels/') {
-      location.replace(DM_PATH); return;
+    if (BLOCKED.includes(p) || p.startsWith('/explore') || p === '/reels/' ||
+        p.match(/^\\/stories\\/[^/]+\\/?$/)) {
+      location.replace(DM);
     }
-    if (p.match(/^\\/stories\\/[^/]+\\/?$/)) location.replace(DM_PATH);
   }
 
-  maybeRedirect();
+  redirect();
 
-  // MutationObserver: remove next-reel overlays
-  new MutationObserver(() => {
-    document.querySelectorAll('[aria-label="Next"]').forEach(btn => {
-      if (btn.closest('[role="dialog"]')) btn.style.display = 'none';
-    });
-  }).observe(document.body, { childList: true, subtree: true });
+  // Intercept SPA navigation
+  const origPush    = history.pushState.bind(history);
+  const origReplace = history.replaceState.bind(history);
+  history.pushState    = (...a) => { origPush(...a);    redirect(); };
+  history.replaceState = (...a) => { origReplace(...a); redirect(); };
+  window.addEventListener('popstate', redirect);
+
+  // Intercept clicks on blocked links before navigation
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    try {
+      const url  = new URL(a.href, location.origin);
+      const path = url.pathname;
+      if (BLOCKED.includes(path) || path.startsWith('/explore') || path === '/reels/') {
+        e.preventDefault();
+        e.stopPropagation();
+        location.replace(DM);
+      }
+    } catch {}
+  }, true);
 
   // Badge polling
   setInterval(() => {
@@ -228,6 +255,12 @@ function buildReplyJS(text) {
 export default function WebViewPane({ app, isActive, theme, onBadge }) {
   const wvRef    = useRef(null);
   const isDark   = theme === 'dark';
+
+  // Lazy-load: don't mount the webview until first activated
+  const [everActivated, setEverActivated] = useState(false);
+  useEffect(() => {
+    if (isActive && !everActivated) setEverActivated(true);
+  }, [isActive]);
 
   // General webview state
   const [loadState, setLoadState] = useState('loading'); // 'loading' | 'ready' | 'error'
@@ -499,23 +532,24 @@ export default function WebViewPane({ app, isActive, theme, onBadge }) {
         </div>
       )}
 
-      {/* Webview */}
-      <webview
-        ref={wvRef}
-        src={app.url}
-        partition={app.partition}
-        useragent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        allowpopups="true"
-        webpreferences="contextIsolation=no"
-        style={{
-          flex: 1,
-          width: '100%',
-          border: 'none',
-          visibility: loadState === 'error' ? 'hidden' : 'visible',
-          // Make room for overlay at bottom when in queue mode
-          paddingBottom: queueMode ? 108 : 0,
-        }}
-      />
+      {/* Webview — only mounted after first activation (lazy load) */}
+      {everActivated && (
+        <webview
+          ref={wvRef}
+          src={app.url}
+          partition={app.partition}
+          useragent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+          allowpopups="true"
+          webpreferences="contextIsolation=no"
+          style={{
+            flex: 1,
+            width: '100%',
+            border: 'none',
+            visibility: loadState === 'error' ? 'hidden' : 'visible',
+            paddingBottom: queueMode ? 108 : 0,
+          }}
+        />
+      )}
 
       {/* Reel queue overlay — Instagram only */}
       {app.id === 'instagram' && queueMode && (
