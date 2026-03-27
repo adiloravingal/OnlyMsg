@@ -12,7 +12,8 @@ Mess around and find out :P - basic feature is that all messages in one place + 
 
 ### Downloads
 *Apple*
-> For Apple silicon (M1, M2, ...) download arm64-dmg file:  https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0-arm64.dmg  
+> For Apple silicon (M1, M2, ...) download arm64-dmg file:  https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0-arm64.dmg
+
 > For Apple Intel download .dmg file:  
 https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0.dmg  
 
