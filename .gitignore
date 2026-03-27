@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+release/
+
+# Electron user data (login sessions, cookies — never commit these)
+*.sqlite
+*.sqlite3
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment (if you ever add secrets)
+.env
+.env.*
