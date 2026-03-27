@@ -1,9 +1,9 @@
 name: Build
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:   # lets you trigger manually from GitHub UI
+  release:
+    types: [created]        # runs automatically when you create a release on GitHub
+  workflow_dispatch:        # also lets you trigger manually from Actions tab
 
 jobs:
   build-mac:
@@ -15,10 +15,10 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run build:mac
-      - uses: actions/upload-artifact@v4
+      - name: Upload Mac DMG to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: OnlyMsg-mac
-          path: release/*.dmg
+          files: release/*.dmg
 
   build-windows:
     runs-on: windows-latest
@@ -29,7 +29,7 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run build:win
-      - uses: actions/upload-artifact@v4
+      - name: Upload Windows EXE to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: OnlyMsg-windows
-          path: release/*.exe
+          files: release/*.exe
