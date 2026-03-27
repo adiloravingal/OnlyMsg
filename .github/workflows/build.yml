@@ -5,6 +5,9 @@ on:
     types: [created]        # runs automatically when you create a release on GitHub
   workflow_dispatch:        # also lets you trigger manually from Actions tab
 
+permissions:
+  contents: write           # required to upload files to releases
+
 jobs:
   build-mac:
     runs-on: macos-latest
