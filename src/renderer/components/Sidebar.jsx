@@ -109,7 +109,7 @@ export default function Sidebar({ apps, activeId, badges, theme, onSelect }) {
                 <span
                   className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-white font-semibold"
                   style={{
-                    background: '#ef4444',
+                    background: '#3b82f6',
                     minWidth: 16,
                     height: 16,
                     fontSize: 10,

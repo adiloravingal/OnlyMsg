@@ -104,41 +104,69 @@ const INJECT_JS = {
   instagram: `
 (function() {
   const DM = '/direct/inbox/';
-  const BLOCKED = ['/', '/explore', '/reels', '/reels/'];
 
-  function redirect() {
-    const p = location.pathname;
-    if (BLOCKED.includes(p) || p.startsWith('/explore') || p === '/reels/' ||
-        p.match(/^\\/stories\\/[^/]+\\/?$/)) {
-      location.replace(DM);
-    }
+  // ── 1. URL watchdog — catches everything including React internal navigation ──
+  function isBlocked(p) {
+    return p === '/'
+      || p.startsWith('/explore')
+      || p.startsWith('/reels')
+      || p.startsWith('/stories')
+      || p.startsWith('/marketplace')
+      || p.startsWith('/gaming');
   }
 
-  redirect();
+  function maybeRedirect() {
+    if (isBlocked(location.pathname)) location.replace(DM);
+  }
 
-  // Intercept SPA navigation
-  const origPush    = history.pushState.bind(history);
-  const origReplace = history.replaceState.bind(history);
-  history.pushState    = (...a) => { origPush(...a);    redirect(); };
-  history.replaceState = (...a) => { origReplace(...a); redirect(); };
-  window.addEventListener('popstate', redirect);
+  maybeRedirect();
+  setInterval(maybeRedirect, 400); // poll every 400ms — catches React router misses
 
-  // Intercept clicks on blocked links before navigation
-  document.addEventListener('click', (e) => {
+  // Also patch history API as a fast path
+  ['pushState','replaceState'].forEach(fn => {
+    const orig = history[fn].bind(history);
+    history[fn] = (...a) => { orig(...a); maybeRedirect(); };
+  });
+  window.addEventListener('popstate', maybeRedirect);
+
+  // ── 2. Click interception — block before navigation starts ───────────────────
+  document.addEventListener('click', e => {
     const a = e.target.closest('a[href]');
     if (!a) return;
     try {
-      const url  = new URL(a.href, location.origin);
-      const path = url.pathname;
-      if (BLOCKED.includes(path) || path.startsWith('/explore') || path === '/reels/') {
-        e.preventDefault();
-        e.stopPropagation();
-        location.replace(DM);
+      if (isBlocked(new URL(a.href, location.origin).pathname)) {
+        e.preventDefault(); e.stopPropagation(); maybeRedirect();
       }
     } catch {}
   }, true);
 
-  // Badge polling
+  // ── 3. Persistent <style> tag — survives React re-renders ───────────────────
+  // Inline style changes get wiped by React reconciliation.
+  // A <style> tag in <head> is owned by us and React never touches it.
+  function ensureBlockStyle() {
+    if (document.getElementById('om-block')) return;
+    const s = document.createElement('style');
+    s.id = 'om-block';
+    s.textContent = \`
+      a[href="/"],
+      li:has(> a[href="/"]),
+      a[href="/explore/"], a[href="/explore"],
+      li:has(> a[href*="/explore"]),
+      a[href="/reels/"], a[href="/reels"],
+      li:has(> a[href*="/reels"]),
+      [aria-label="Home"],
+      [aria-label="Explore"],
+      [aria-label="Reels"]
+      { display: none !important; }
+    \`;
+    (document.head || document.documentElement).appendChild(s);
+  }
+
+  ensureBlockStyle();
+  // Re-inject if React ever removes our <style> tag
+  new MutationObserver(ensureBlockStyle).observe(document.documentElement, { childList: true });
+
+  // ── 4. Badge polling ─────────────────────────────────────────────────────────
   setInterval(() => {
     const el = document.querySelector('a[href="/direct/inbox/"] span[title]') ||
                document.querySelector('[data-testid="badge"]');
@@ -252,7 +280,7 @@ function buildReplyJS(text) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function WebViewPane({ app, isActive, theme, onBadge }) {
+export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterControls }) {
   const wvRef    = useRef(null);
   const isDark   = theme === 'dark';
 
@@ -383,12 +411,40 @@ export default function WebViewPane({ app, isActive, theme, onBadge }) {
     wv.addEventListener('dom-ready', onReady);
   }, []);
 
+  // ── Register topbar controls when active ────────────────────────────────────
+  useEffect(() => {
+    if (!isActive || !onRegisterControls) return;
+    onRegisterControls({
+      back:    () => wvRef.current?.goBack(),
+      forward: () => wvRef.current?.goForward(),
+      reload:  () => wvRef.current?.reload(),
+    });
+  }, [isActive, onRegisterControls]);
+
   // ── Main webview event wiring ────────────────────────────────────────────────
   useEffect(() => {
     const wv = wvRef.current;
     if (!wv) return;
 
     let stopPolling = null;
+
+    // ── will-navigate: fires BEFORE page renders — best place to block ─────────
+    const onWillNavigate = (e) => {
+      if (app.id !== 'instagram') return;
+      try {
+        const path = new URL(e.url).pathname;
+        if (
+          path === '/' ||
+          path.startsWith('/explore') ||
+          path.startsWith('/reels') ||
+          path.startsWith('/stories') ||
+          path.startsWith('/marketplace')
+        ) {
+          wv.loadURL('https://www.instagram.com/direct/inbox/');
+        }
+      } catch {}
+    };
+    wv.addEventListener('will-navigate', onWillNavigate);
 
     const onDomReady = () => {
       setLoadState('ready');
@@ -413,22 +469,35 @@ export default function WebViewPane({ app, isActive, theme, onBadge }) {
       startBadgePolling();
     };
 
+    const INSTA_BLOCKED_PATHS = ['/', '/explore/', '/reels/', '/explore', '/reels'];
+
     const handleNavigation = (e) => {
       const url = e.url;
       if (!url || url === 'about:blank') return;
 
       if (app.id === 'instagram') {
+        // Renderer-level redirect — catches full-page navigations that bypass injected JS
+        try {
+          const path = new URL(url).pathname;
+          const blocked = INSTA_BLOCKED_PATHS.includes(path)
+            || path.startsWith('/explore')
+            || path.startsWith('/reels')
+            || path.startsWith('/stories')
+            || path.startsWith('/marketplace');
+          if (blocked) {
+            wvRef.current?.loadURL('https://www.instagram.com/direct/inbox/');
+            return;
+          }
+        } catch {}
+
         if (isDMConversation(url)) {
-          // Entered a DM conversation
           setConversationUrl(url);
           if (queueMode) {
             setQueueMode(false);
             setFrozenQueue([]);
             setQueueIndex(-1);
           }
-          // Scrape will be triggered on dom-ready
         } else if (isReelUrl(url) && !isSending) {
-          // Only enter queue if we navigated here naturally (not via our own loadURL from reply)
           enterQueue(normalizeReelUrl(url) || url);
         }
       }
@@ -461,6 +530,7 @@ export default function WebViewPane({ app, isActive, theme, onBadge }) {
     window.addEventListener('keydown', keyHandler);
 
     return () => {
+      wv.removeEventListener('will-navigate',        onWillNavigate);
       wv.removeEventListener('dom-ready',            onDomReady);
       wv.removeEventListener('did-navigate',         handleNavigation);
       wv.removeEventListener('did-navigate-in-page', handleNavigation);
@@ -470,7 +540,7 @@ export default function WebViewPane({ app, isActive, theme, onBadge }) {
       window.removeEventListener('keydown', keyHandler);
       if (stopPolling) stopPolling();
     };
-  }, [app.id, isActive, queueMode, isSending, enterQueue, pollConversationReels]);
+  }, [app.id, isActive, queueMode, isSending, enterQueue, pollConversationReels, everActivated]);
 
   // ── Badge polling ────────────────────────────────────────────────────────────
   const startBadgePolling = useCallback(() => {
@@ -479,7 +549,19 @@ export default function WebViewPane({ app, isActive, theme, onBadge }) {
     if (wv._badgeInterval) clearInterval(wv._badgeInterval);
     wv._badgeInterval = setInterval(async () => {
       try {
-        const count = await wv.executeJavaScript('window.__omBadge || 0');
+        const count = await wv.executeJavaScript(`
+          (() => {
+            // 1. App-specific badge var set by injected JS
+            if (window.__omBadge) return window.__omBadge;
+            // 2. WhatsApp: unread count elements
+            const wa = document.querySelector('[data-testid="icon-unread-count"]');
+            if (wa) return parseInt(wa.textContent) || 0;
+            // 3. Generic fallback: "(N)" in page title — works for WhatsApp, Teams, etc.
+            const m = document.title.match(/\\((\\d+)\\)/);
+            if (m) return parseInt(m[1]);
+            return 0;
+          })()
+        `);
         onBadge(app.id, parseInt(count) || 0);
       } catch {}
     }, 4000);
