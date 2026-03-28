@@ -1,4 +1,4 @@
-## OnlyMsg
+## Oasis (old OnlyMsg)
 *Supports major all major socials and other messaging platforms*
 
 ### Why I made this? 
