@@ -30,4 +30,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Updates
   checkUpdate:        ()         => ipcRenderer.invoke('check-update'),
   openUrl:            (url)      => ipcRenderer.send('open-url', url),
+
+  // Clipboard
+  clipboardRead:      ()         => ipcRenderer.invoke('clipboard-read'),
+  clipboardWrite:     (text)     => ipcRenderer.send('clipboard-write', text),
 });

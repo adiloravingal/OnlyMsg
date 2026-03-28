@@ -59,7 +59,7 @@ export default function SetupWizard({ theme, onComplete }) {
         >
           <div className="text-5xl" aria-hidden>💬</div>
           <div className="text-center">
-            <h1 className="text-2xl font-bold" style={{ color: text }}>Welcome to OnlyMsg</h1>
+            <h1 className="text-2xl font-bold" style={{ color: text }}>Welcome to Oasis</h1>
             <p className="mt-1 text-sm" style={{ color: sub }}>Your personal messaging hub. Let's get you set up.</p>
           </div>
 

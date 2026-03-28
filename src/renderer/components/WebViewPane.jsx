@@ -280,14 +280,329 @@ function buildReplyJS(text) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterControls }) {
+// ─── Per-app conversation scraping JS ─────────────────────────────────────────
+
+const SCRAPE_CONVS_JS = {
+  // ── WhatsApp & WhatsApp Business ──────────────────────────────────────────
+  whatsapp: `
+(function() {
+  function scrape() {
+    const seen = new Set();
+    const result = [];
+
+    // Primary: only the title cell, NOT message preview spans
+    // [data-testid="cell-frame-title"] is scoped to contact name only
+    document.querySelectorAll('#pane-side [data-testid="cell-frame-title"]').forEach(el => {
+      const span = el.querySelector('span[title]') || el.querySelector('span') || el;
+      const name = (span.getAttribute ? span.getAttribute('title') : null)?.trim()
+                || span.textContent?.trim();
+      if (!name || name.length < 2 || seen.has(name)) return;
+      seen.add(name);
+      const row = el.closest('[data-testid="cell-frame-container"]') || el.closest('li');
+      const isGroup = row ? !!row.querySelector('span[data-icon*="group"]') : false;
+      result.push({ name, type: isGroup ? 'group' : 'dm' });
+    });
+
+    // Fallback: aria-label on list items — WhatsApp sets these as "Contact Name, preview, time"
+    if (result.length === 0) {
+      document.querySelectorAll('#pane-side [role="listitem"]').forEach(el => {
+        const label = el.getAttribute('aria-label');
+        if (!label) return;
+        const name = label.split(',')[0].trim();
+        if (!name || name.length < 2 || seen.has(name)) return;
+        seen.add(name);
+        const isGroup = !!el.querySelector('span[data-icon*="group"]');
+        result.push({ name, type: isGroup ? 'group' : 'dm' });
+      });
+    }
+
+    if (result.length > 0) window.__omConversations = result.slice(0, 40);
+    return result.length;
+  }
+
+  // Retry every 800ms for up to 30s until we get results
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (scrape() > 0 || attempts > 37) clearInterval(timer);
+  }, 800);
+  scrape(); // immediate first attempt
+
+  // Keep updating on DOM changes
+  let t;
+  new MutationObserver(() => { clearTimeout(t); t = setTimeout(scrape, 300); })
+    .observe(document.body, { childList: true, subtree: true });
+})();
+`,
+
+  // ── Instagram ─────────────────────────────────────────────────────────────
+  instagram: `
+(function() {
+  function scrape() {
+    const seen = new Set();
+    const result = [];
+
+    // Strategy 1: DM conversation links
+    document.querySelectorAll('a[href*="/direct/t/"]').forEach(el => {
+      // Get the deepest text node that's a real name (not icon/button text)
+      const allSpans = [...el.querySelectorAll('span')].filter(s =>
+        !s.querySelector('span') && s.textContent.trim().length > 1
+      );
+      // Try aria-label on the link first (most reliable)
+      const ariaLabel = el.getAttribute('aria-label')?.trim();
+      const name = ariaLabel || allSpans[0]?.textContent?.trim();
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      const isGroup = el.querySelectorAll('img[alt]').length > 1;
+      result.push({ name, type: isGroup ? 'group' : 'dm' });
+    });
+
+    // Strategy 2: conversation list items (fallback for new IG layout)
+    if (result.length === 0) {
+      document.querySelectorAll('[role="listitem"] a, [class*="thread"] a').forEach(el => {
+        if (!el.href?.includes('/direct/')) return;
+        const name = el.getAttribute('aria-label')?.trim()
+                  || el.querySelector('span')?.textContent?.trim();
+        if (!name || name.length < 2 || seen.has(name)) return;
+        seen.add(name);
+        result.push({ name, type: 'dm' });
+      });
+    }
+
+    if (result.length > 0) window.__omConversations = result.slice(0, 40);
+    return result.length;
+  }
+
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (scrape() > 0 || attempts > 37) clearInterval(timer);
+  }, 800);
+  scrape();
+
+  let t;
+  new MutationObserver(() => { clearTimeout(t); t = setTimeout(scrape, 300); })
+    .observe(document.body, { childList: true, subtree: true });
+})();
+`,
+
+  // ── Twitter / X ───────────────────────────────────────────────────────────
+  twitter: `
+(function() {
+  function scrape() {
+    const seen = new Set();
+    const result = [];
+
+    // Strategy 1: conversation items in DM list
+    document.querySelectorAll('[data-testid="conversation"]').forEach(el => {
+      const name = [...el.querySelectorAll('span[dir="ltr"]')]
+        .map(s => s.textContent.trim())
+        .find(t => t.length > 1 && !t.startsWith('@') && !/^\\d/.test(t));
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      const isGroup = el.querySelectorAll('[data-testid*="UserAvatar"]').length > 1
+                   || (el.getAttribute('aria-label') || '').toLowerCase().includes('group');
+      result.push({ name, type: isGroup ? 'group' : 'dm' });
+    });
+
+    // Strategy 2: cell in messages list (fallback)
+    if (result.length === 0) {
+      document.querySelectorAll('[aria-label*="Direct Messages"] [role="listitem"]').forEach(el => {
+        const name = el.querySelector('span[dir="ltr"]')?.textContent?.trim();
+        if (!name || name.length < 2 || seen.has(name)) return;
+        seen.add(name);
+        result.push({ name, type: 'dm' });
+      });
+    }
+
+    if (result.length > 0) window.__omConversations = result.slice(0, 40);
+    return result.length;
+  }
+
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (scrape() > 0 || attempts > 37) clearInterval(timer);
+  }, 800);
+  scrape();
+
+  let t;
+  new MutationObserver(() => { clearTimeout(t); t = setTimeout(scrape, 300); })
+    .observe(document.body, { childList: true, subtree: true });
+})();
+`,
+
+  // ── LinkedIn ──────────────────────────────────────────────────────────────
+  linkedin: `
+(function() {
+  function scrape() {
+    const seen = new Set();
+    const result = [];
+
+    // Strategy 1: conversation list items
+    document.querySelectorAll('.msg-conversation-listitem__link, [class*="conversation-listitem"]').forEach(el => {
+      const name = el.querySelector('[class*="participant-names"] span, [class*="ConversationTitle"], h3, strong')
+                    ?.textContent?.trim()
+                || el.getAttribute('aria-label')?.trim();
+      if (!name || name.length < 2 || seen.has(name)) return;
+      seen.add(name);
+      const isGroup = name.includes(',') || !!el.querySelector('[class*="group-indicator"]');
+      result.push({ name, type: isGroup ? 'group' : 'dm' });
+    });
+
+    // Strategy 2: li items in messaging sidebar
+    if (result.length === 0) {
+      document.querySelectorAll('.msg-conversations-container__conversations-list li').forEach(el => {
+        const name = el.querySelector('h3, [class*="name"]')?.textContent?.trim();
+        if (!name || name.length < 2 || seen.has(name)) return;
+        seen.add(name);
+        result.push({ name, type: 'dm' });
+      });
+    }
+
+    if (result.length > 0) window.__omConversations = result.slice(0, 40);
+    return result.length;
+  }
+
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (scrape() > 0 || attempts > 37) clearInterval(timer);
+  }, 800);
+  scrape();
+
+  let t;
+  new MutationObserver(() => { clearTimeout(t); t = setTimeout(scrape, 300); })
+    .observe(document.body, { childList: true, subtree: true });
+})();
+`,
+
+  // ── Microsoft Teams ───────────────────────────────────────────────────────
+  teams: `
+(function() {
+  function scrape() {
+    const result = [];
+    const seen   = new Set();
+
+    // ── Chats (DMs & group chats) ──────────────────────────────────────────
+    // Strategy 1: data-tid attributes (stable in Teams)
+    document.querySelectorAll('[data-tid="chat-list-item"]').forEach(el => {
+      const name = el.querySelector('[data-tid="chat-list-item-title"], [class*="itemTitle"], [class*="displayName"]')
+                    ?.textContent?.trim()
+                || el.getAttribute('aria-label')?.split(',')[0]?.trim();
+      if (!name || name.length < 2 || seen.has(name)) return;
+      seen.add(name);
+      const isGroup = el.querySelectorAll('[class*="avatar"], [class*="Avatar"]').length > 1 || name.includes(',');
+      result.push({ name, type: isGroup ? 'group' : 'dm' });
+    });
+
+    // Strategy 2: generic chat list items
+    if (result.length === 0) {
+      document.querySelectorAll('[aria-label*="chat list"] [role="listitem"], [class*="chatList"] li').forEach(el => {
+        const name = el.querySelector('[class*="title"], [class*="name"], span[title]')
+                      ?.textContent?.trim()
+                  || el.getAttribute('aria-label')?.split(',')[0]?.trim();
+        if (!name || name.length < 2 || seen.has(name)) return;
+        seen.add(name);
+        result.push({ name, type: 'dm' });
+      });
+    }
+
+    // ── Channels ──────────────────────────────────────────────────────────
+    document.querySelectorAll('[data-tid="channel-list-item"], [class*="channelItem"]').forEach(el => {
+      const name = el.querySelector('[class*="channelName"], span[title], [class*="name"]')
+                    ?.textContent?.trim()
+                || el.getAttribute('aria-label')?.trim()
+                || el.querySelector('span')?.textContent?.trim();
+      if (!name || name.length < 2 || seen.has(name)) return;
+      seen.add(name);
+      result.push({ name, type: 'channel' });
+    });
+
+    if (result.length > 0) window.__omConversations = result.slice(0, 50);
+    return result.length;
+  }
+
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (scrape() > 0 || attempts > 37) clearInterval(timer);
+  }, 800);
+  scrape();
+
+  let t;
+  new MutationObserver(() => { clearTimeout(t); t = setTimeout(scrape, 400); })
+    .observe(document.body, { childList: true, subtree: true });
+})();
+`,
+
+  // ── Google Classroom ──────────────────────────────────────────────────────
+  classroom: `
+(function() {
+  function scrape() {
+    const result = [];
+    const seen   = new Set();
+
+    // Strategy 1: class cards on home screen
+    document.querySelectorAll('[class*="courseCardContent"], [jscontroller][jsaction*="click"]').forEach(el => {
+      const name = el.querySelector('h2, h3, [class*="courseName"], [class*="className"]')
+                    ?.textContent?.trim();
+      if (!name || name.length < 2 || seen.has(name)) return;
+      seen.add(name);
+      result.push({ name, type: 'class' });
+    });
+
+    // Strategy 2: left nav class links
+    if (result.length === 0) {
+      document.querySelectorAll('[aria-label*="class"] a, nav a[href*="/c/"]').forEach(el => {
+        const name = el.textContent?.trim();
+        if (!name || name.length < 2 || seen.has(name)) return;
+        seen.add(name);
+        result.push({ name, type: 'class' });
+      });
+    }
+
+    // Strategy 3: page title when inside a class
+    if (result.length === 0) {
+      const title = document.querySelector('h1')?.textContent?.trim()
+                 || document.title?.replace(/ - Google Classroom$/, '').trim();
+      if (title && title.length > 2 && title !== 'Google Classroom') {
+        result.push({ name: title, type: 'class' });
+      }
+    }
+
+    if (result.length > 0) window.__omConversations = result.slice(0, 30);
+    return result.length;
+  }
+
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts++;
+    if (scrape() > 0 || attempts > 37) clearInterval(timer);
+  }, 800);
+  scrape();
+
+  let t;
+  new MutationObserver(() => { clearTimeout(t); t = setTimeout(scrape, 400); })
+    .observe(document.body, { childList: true, subtree: true });
+})();
+`,
+};
+
+// Add whatsapp-business as alias for whatsapp scraper
+SCRAPE_CONVS_JS['whatsapp-business'] = SCRAPE_CONVS_JS['whatsapp'];
+
+export default function WebViewPane({ app, isActive, theme, onBadge, onConversations, onRegisterControls, pendingReply, onPendingReplyDone }) {
   const wvRef    = useRef(null);
   const isDark   = theme === 'dark';
 
-  // Lazy-load: don't mount the webview until first activated
+  // Lazy-load: mount immediately if active, otherwise after 4s (background load for contact scraping)
   const [everActivated, setEverActivated] = useState(false);
   useEffect(() => {
-    if (isActive && !everActivated) setEverActivated(true);
+    if (isActive && !everActivated) { setEverActivated(true); return; }
+    // Background: activate all apps after 4s so contacts index without user visiting each app
+    const t = setTimeout(() => setEverActivated(true), 4000);
+    return () => clearTimeout(t);
   }, [isActive]);
 
   // General webview state
@@ -421,6 +736,19 @@ export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterC
     });
   }, [isActive, onRegisterControls]);
 
+  // ── Re-inject conversation scraper when switching to this tab ────────────────
+  useEffect(() => {
+    if (!isActive || !everActivated) return;
+    const wv = wvRef.current;
+    if (!wv) return;
+    const convJs = SCRAPE_CONVS_JS[app.id];
+    if (convJs) {
+      // Small delay to let the webview settle after tab switch
+      const t = setTimeout(() => { wv.executeJavaScript(convJs).catch(() => {}); }, 500);
+      return () => clearTimeout(t);
+    }
+  }, [isActive, everActivated, app.id]);
+
   // ── Main webview event wiring ────────────────────────────────────────────────
   useEffect(() => {
     const wv = wvRef.current;
@@ -446,6 +774,24 @@ export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterC
     };
     wv.addEventListener('will-navigate', onWillNavigate);
 
+    // ── new-window: keep navigation inside the webview ────────────────────────
+    const onNewWindow = (e) => {
+      const url = e.url;
+      if (!url || url === 'about:blank') return;
+      // Google auth popups need to open (they communicate back to opener for OAuth)
+      if (/accounts\.google\.com/.test(url)) return;
+      // Instagram: redirect non-DM new windows back to inbox
+      if (app.id === 'instagram') {
+        try {
+          const path = new URL(url).pathname;
+          if (!path.includes('/direct')) { wv.loadURL('https://www.instagram.com/direct/inbox/'); return; }
+        } catch {}
+      }
+      // Everything else: load within the same webview
+      wv.loadURL(url);
+    };
+    wv.addEventListener('new-window', onNewWindow);
+
     const onDomReady = () => {
       setLoadState('ready');
 
@@ -455,7 +801,7 @@ export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterC
       const js  = INJECT_JS[app.id];
       if (js)  wv.executeJavaScript(js).catch(() => {});
 
-      // Instagram: if on a DM conversation, inject scraper
+      // Instagram: if on a DM conversation, inject reel scraper
       if (app.id === 'instagram') {
         const url = wv.getURL?.() || '';
         if (isDMConversation(url)) {
@@ -464,6 +810,10 @@ export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterC
           stopPolling = pollConversationReels();
         }
       }
+
+      // Inject conversation scraper for search modal
+      const convJs = SCRAPE_CONVS_JS[app.id];
+      if (convJs) wv.executeJavaScript(convJs).catch(() => {});
 
       // Badge polling
       startBadgePolling();
@@ -531,6 +881,7 @@ export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterC
 
     return () => {
       wv.removeEventListener('will-navigate',        onWillNavigate);
+      wv.removeEventListener('new-window',           onNewWindow);
       wv.removeEventListener('dom-ready',            onDomReady);
       wv.removeEventListener('did-navigate',         handleNavigation);
       wv.removeEventListener('did-navigate-in-page', handleNavigation);
@@ -566,6 +917,49 @@ export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterC
       } catch {}
     }, 4000);
   }, [app.id, onBadge]);
+
+  // ── Poll scraped conversations for search modal ──────────────────────────────
+  useEffect(() => {
+    if (!onConversations || !everActivated) return;
+    const wv = wvRef.current;
+    if (!wv) return;
+
+    // Immediate read when pane becomes active
+    const readNow = async () => {
+      try {
+        const convs = await wv.executeJavaScript('window.__omConversations || []');
+        if (Array.isArray(convs) && convs.length > 0) onConversations(app.id, convs);
+      } catch {}
+    };
+
+    if (isActive) readNow();
+
+    const id = setInterval(readNow, 1500);
+    return () => clearInterval(id);
+  }, [app.id, onConversations, everActivated, isActive]);
+
+  // ── Inject pending quick reply ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!pendingReply || !everActivated) return;
+    const wv = wvRef.current;
+    if (!wv) return;
+
+    const inject = async () => {
+      try {
+        await new Promise(r => setTimeout(r, 600));
+        await wv.executeJavaScript(buildReplyJS(pendingReply));
+      } catch {}
+      onPendingReplyDone?.();
+    };
+
+    const url = wv.getURL?.() || '';
+    if (url && url !== 'about:blank') {
+      inject();
+    } else {
+      const onReady = () => { wv.removeEventListener('dom-ready', onReady); inject(); };
+      wv.addEventListener('dom-ready', onReady);
+    }
+  }, [pendingReply, everActivated]);
 
   const handleRetry = () => {
     setLoadState('loading');
@@ -616,21 +1010,24 @@ export default function WebViewPane({ app, isActive, theme, onBadge, onRegisterC
 
       {/* Webview — only mounted after first activation (lazy load) */}
       {everActivated && (
-        <webview
-          ref={wvRef}
-          src={app.url}
-          partition={app.partition}
-          useragent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-          allowpopups="true"
-          webpreferences="contextIsolation=no"
-          style={{
-            flex: 1,
-            width: '100%',
-            border: 'none',
-            visibility: loadState === 'error' ? 'hidden' : 'visible',
-            paddingBottom: queueMode ? 108 : 0,
-          }}
-        />
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          <webview
+            ref={wvRef}
+            src={app.url}
+            partition={app.partition}
+            useragent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            allowpopups="true"
+            webpreferences="contextIsolation=no"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: queueMode ? 'calc(100% - 108px)' : '100%',
+              border: 'none',
+              visibility: loadState === 'error' ? 'hidden' : 'visible',
+            }}
+          />
+        </div>
       )}
 
       {/* Reel queue overlay — Instagram only */}

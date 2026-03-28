@@ -17,6 +17,9 @@ release/
 .vscode/
 .idea/
 
+# Claude Code guidance (local only)
+CLAUDE.md
+
 # Logs
 *.log
 npm-debug.log*

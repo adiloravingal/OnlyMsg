@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, shell, nativeTheme, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell, nativeTheme, Menu, dialog, clipboard } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const https = require('https');
@@ -66,7 +66,7 @@ function checkUpdate() {
     const opts = {
       hostname: 'api.github.com',
       path: '/repos/adiloravingal/OnlyMsg/releases/latest',
-      headers: { 'User-Agent': 'OnlyMsg-App' },
+      headers: { 'User-Agent': 'Oasis-App' },
     };
     https.get(opts, (res) => {
       let raw = '';
@@ -118,6 +118,8 @@ function setupPartition(partitionName) {
 function createWindow() {
   APPS.forEach(a => setupPartition(a.partition));
 
+  const iconPath = path.join(__dirname, '../assets/icon.png');
+
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -126,6 +128,7 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1a1a1a' : '#ffffff',
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -133,6 +136,10 @@ function createWindow() {
       webviewTag: true,
     },
   });
+
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(iconPath);
+  }
 
   if (isDev) {
     win.loadURL('http://localhost:5173');
@@ -188,6 +195,7 @@ function createWindow() {
   // Open release URL in browser
   ipcMain.on('open-url', (_, url) => shell.openExternal(url));
 
+
   // Theme
   ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
   nativeTheme.on('updated', () => {
@@ -229,6 +237,10 @@ function createWindow() {
 
   return win;
 }
+
+// ─── Clipboard IPC (module-level — safe across window recreations) ────────────
+ipcMain.handle('clipboard-read',  ()     => clipboard.readText());
+ipcMain.on('clipboard-write',     (_, t) => clipboard.writeText(t));
 
 app.whenReady().then(() => {
   createWindow();
