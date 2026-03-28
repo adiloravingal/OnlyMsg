@@ -12,14 +12,12 @@ Mess around and find out :P - basic feature is that all messages in one place + 
 
 ### Latest Downloads
 *Apple*
-> For Apple silicon (M1, M2, ...) download arm64-dmg file:  https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0-arm64.dmg
+> [For Apple silicon (M1, M2, ...) download](https://github.com/adiloravingal/OnlyMsg/releases/download/v1.2.0/Oasis-1.2.0-arm64.dmg)
 
-> For Apple Intel download .dmg file:  
-https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0.dmg  
+> [For Apple Intel download](https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg-1.0.0.dmg)  
 
 *Windows*
-> For Windows download .exe file:  
-https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg.Setup.1.0.0.exe
+> [For Windows download](https://github.com/adiloravingal/OnlyMsg/releases/download/v1.0.1/OnlyMsg.Setup.1.0.0.exe)
 
 
 ### Support
